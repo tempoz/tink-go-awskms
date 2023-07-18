@@ -18,11 +18,12 @@ package fakeawskms
 
 import (
 	"bytes"
+	"context"
 	"strings"
 	"testing"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/kms"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/kms"
 )
 
 const validKeyID = "arn:aws:kms:us-west-2:111122223333:key/1234abcd-12ab-34cd-56ef-1234567890ab"
@@ -36,15 +37,15 @@ func TestEncyptDecryptWithValidKeyId(t *testing.T) {
 
 	plaintext := []byte("plaintext")
 	contextValue := "contextValue"
-	context := map[string]*string{"contextName": &contextValue}
+	encContext := map[string]string{"contextName": contextValue}
 
 	encRequest := &kms.EncryptInput{
 		KeyId:             aws.String(validKeyID),
 		Plaintext:         plaintext,
-		EncryptionContext: context,
+		EncryptionContext: encContext,
 	}
 
-	encResponse, err := fakeKMS.Encrypt(encRequest)
+	encResponse, err := fakeKMS.Encrypt(context.Background(), encRequest)
 	if err != nil {
 		t.Fatalf("fakeKMS.Encrypt(encRequest) err = %s, want nil", err)
 	}
@@ -54,9 +55,9 @@ func TestEncyptDecryptWithValidKeyId(t *testing.T) {
 	decRequest := &kms.DecryptInput{
 		KeyId:             aws.String(validKeyID),
 		CiphertextBlob:    ciphertext,
-		EncryptionContext: context,
+		EncryptionContext: encContext,
 	}
-	decResponse, err := fakeKMS.Decrypt(decRequest)
+	decResponse, err := fakeKMS.Decrypt(context.Background(), decRequest)
 	if err != nil {
 		t.Fatalf("fakeKMS.Decrypt(decRequest) err = %s, want nil", err)
 	}
@@ -69,13 +70,13 @@ func TestEncyptDecryptWithValidKeyId(t *testing.T) {
 
 	// decrypt with a different context should fail
 	otherContextValue := "otherContextValue"
-	otherContext := map[string]*string{"contextName": &otherContextValue}
+	otherContext := map[string]string{"contextName": otherContextValue}
 	otherDecRequest := &kms.DecryptInput{
 		KeyId:             aws.String(validKeyID),
 		CiphertextBlob:    ciphertext,
 		EncryptionContext: otherContext,
 	}
-	if _, err := fakeKMS.Decrypt(otherDecRequest); err == nil {
+	if _, err := fakeKMS.Decrypt(context.Background(), otherDecRequest); err == nil {
 		t.Fatal("fakeKMS.Decrypt(otherDecRequest) err = nil, want not nil")
 	}
 }
@@ -88,15 +89,15 @@ func TestEncyptWithUnknownKeyID(t *testing.T) {
 
 	plaintext := []byte("plaintext")
 	contextValue := "contextValue"
-	context := map[string]*string{"contextName": &contextValue}
+	encContext := map[string]string{"contextName": contextValue}
 
 	encRequestWithUnknownKeyID := &kms.EncryptInput{
 		KeyId:             aws.String(validKeyID2),
 		Plaintext:         plaintext,
-		EncryptionContext: context,
+		EncryptionContext: encContext,
 	}
 
-	if _, err := fakeKMS.Encrypt(encRequestWithUnknownKeyID); err == nil {
+	if _, err := fakeKMS.Encrypt(context.Background(), encRequestWithUnknownKeyID); err == nil {
 		t.Fatal("fakeKMS.Encrypt(encRequestWithvalidKeyID2) err = nil, want not nil")
 	}
 }
@@ -109,14 +110,14 @@ func TestDecryptWithInvalidCiphertext(t *testing.T) {
 
 	invalidCiphertext := []byte("plaintext")
 	contextValue := "contextValue"
-	context := map[string]*string{"contextName": &contextValue}
+	encContext := map[string]string{"contextName": contextValue}
 
 	decRequest := &kms.DecryptInput{
 		CiphertextBlob:    invalidCiphertext,
-		EncryptionContext: context,
+		EncryptionContext: encContext,
 	}
 
-	if _, err := fakeKMS.Decrypt(decRequest); err == nil {
+	if _, err := fakeKMS.Decrypt(context.Background(), decRequest); err == nil {
 		t.Fatal("fakeKMS.Decrypt(decRequest) err = nil, want not nil")
 	}
 }
@@ -129,15 +130,15 @@ func TestDecryptWithUnknownKeyId(t *testing.T) {
 
 	ciphertext := []byte("invalidCiphertext")
 	contextValue := "contextValue"
-	context := map[string]*string{"contextName": &contextValue}
+	encContext := map[string]string{"contextName": contextValue}
 
 	decRequest := &kms.DecryptInput{
 		KeyId:             aws.String(validKeyID2),
 		CiphertextBlob:    ciphertext,
-		EncryptionContext: context,
+		EncryptionContext: encContext,
 	}
 
-	if _, err := fakeKMS.Decrypt(decRequest); err == nil {
+	if _, err := fakeKMS.Decrypt(context.Background(), decRequest); err == nil {
 		t.Fatal("fakeKMS.Decrypt(decRequest) err = nil, want not nil")
 	}
 }
@@ -150,15 +151,15 @@ func TestDecryptWithWrongKeyId(t *testing.T) {
 
 	plaintext := []byte("plaintext")
 	contextValue := "contextValue"
-	context := map[string]*string{"contextName": &contextValue}
+	encContext := map[string]string{"contextName": contextValue}
 
 	encRequest := &kms.EncryptInput{
 		KeyId:             aws.String(validKeyID),
 		Plaintext:         plaintext,
-		EncryptionContext: context,
+		EncryptionContext: encContext,
 	}
 
-	encResponse, err := fakeKMS.Encrypt(encRequest)
+	encResponse, err := fakeKMS.Encrypt(context.Background(), encRequest)
 	if err != nil {
 		t.Fatalf("fakeKMS.Encrypt(encRequest) err = %s, want nil", err)
 	}
@@ -168,9 +169,9 @@ func TestDecryptWithWrongKeyId(t *testing.T) {
 	decRequest := &kms.DecryptInput{
 		KeyId:             aws.String(validKeyID2), // wrong key id
 		CiphertextBlob:    ciphertext,
-		EncryptionContext: context,
+		EncryptionContext: encContext,
 	}
-	if _, err := fakeKMS.Decrypt(decRequest); err == nil {
+	if _, err := fakeKMS.Decrypt(context.Background(), decRequest); err == nil {
 		t.Fatal("fakeKMS.Decrypt(decRequest) err = nil, want not nil")
 	}
 }
@@ -187,14 +188,14 @@ func TestDecryptWithoutKeyId(t *testing.T) {
 	plaintext := []byte("plaintext")
 	plaintext2 := []byte("plaintext2")
 	contextValue := "contextValue"
-	context := map[string]*string{"contextName": &contextValue}
+	encContext := map[string]string{"contextName": contextValue}
 
 	encRequest := &kms.EncryptInput{
 		KeyId:             aws.String(validKeyID),
 		Plaintext:         plaintext,
-		EncryptionContext: context,
+		EncryptionContext: encContext,
 	}
-	encResponse, err := fakeKMS.Encrypt(encRequest)
+	encResponse, err := fakeKMS.Encrypt(context.Background(), encRequest)
 	if err != nil {
 		t.Fatalf("fakeKMS.Encrypt(encRequest) err = %s, want nil", err)
 	}
@@ -205,9 +206,9 @@ func TestDecryptWithoutKeyId(t *testing.T) {
 	encRequest2 := &kms.EncryptInput{
 		KeyId:             aws.String(validKeyID2),
 		Plaintext:         plaintext2,
-		EncryptionContext: context,
+		EncryptionContext: encContext,
 	}
-	encResponse2, err := fakeKMS.Encrypt(encRequest2)
+	encResponse2, err := fakeKMS.Encrypt(context.Background(), encRequest2)
 	if err != nil {
 		t.Fatalf("fakeKMS.Encrypt(encRequest2) err = %s, want nil", err)
 	}
@@ -218,9 +219,9 @@ func TestDecryptWithoutKeyId(t *testing.T) {
 	decRequest := &kms.DecryptInput{
 		// KeyId is not set
 		CiphertextBlob:    encResponse.CiphertextBlob,
-		EncryptionContext: context,
+		EncryptionContext: encContext,
 	}
-	decResponse, err := fakeKMS.Decrypt(decRequest)
+	decResponse, err := fakeKMS.Decrypt(context.Background(), decRequest)
 	if err != nil {
 		t.Fatalf("fakeKMS.Decrypt(decRequest) err = %s, want nil", err)
 	}
@@ -234,9 +235,9 @@ func TestDecryptWithoutKeyId(t *testing.T) {
 	decRequest2 := &kms.DecryptInput{
 		// KeyId is not set
 		CiphertextBlob:    encResponse2.CiphertextBlob,
-		EncryptionContext: context,
+		EncryptionContext: encContext,
 	}
-	decResponse2, err := fakeKMS.Decrypt(decRequest2)
+	decResponse2, err := fakeKMS.Decrypt(context.Background(), decRequest2)
 	if err != nil {
 		t.Fatalf("fakeKMS.Decrypt(decRequest2) err = %s, want nil", err)
 	}
@@ -252,7 +253,7 @@ func TestSerializeContext(t *testing.T) {
 	uvw := "uvw"
 	xyz := "xyz"
 	rst := "rst"
-	context := map[string]*string{"def": &uvw, "abc": &xyz, "ghi": &rst}
+	context := map[string]string{"def": uvw, "abc": xyz, "ghi": rst}
 
 	got := string(serializeContext(context))
 	want := "{\"abc\":\"xyz\",\"def\":\"uvw\",\"ghi\":\"rst\"}"
@@ -260,13 +261,13 @@ func TestSerializeContext(t *testing.T) {
 		t.Fatalf("SerializeContext(context) = %s, want %s", got, want)
 	}
 
-	gotEscaped := string(serializeContext(map[string]*string{"a\"b": &xyz}))
+	gotEscaped := string(serializeContext(map[string]string{"a\"b": xyz}))
 	wantEscaped := "{\"a\\\"b\":\"xyz\"}"
 	if gotEscaped != wantEscaped {
 		t.Fatalf("SerializeContext(context) = %s, want %s", gotEscaped, wantEscaped)
 	}
 
-	gotEmpty := string(serializeContext(map[string]*string{}))
+	gotEmpty := string(serializeContext(map[string]string{}))
 	if gotEmpty != "{}" {
 		t.Fatalf("SerializeContext(context) = %s, want %s", gotEmpty, "{}")
 	}

@@ -9,11 +9,10 @@ go_library(
     srcs = ["fakeawskms.go"],
     importpath = "github.com/tink-crypto/tink-go-awskms/v2/integration/awskms/internal/fakeawskms",
     deps = [
-        "@com_github_tink_crypto_tink_go_v2//tink",
-        "@com_github_tink_crypto_tink_go_v2//keyset",
+        "@com_github_aws_aws_sdk_go_v2_service_kms//:kms",
         "@com_github_tink_crypto_tink_go_v2//aead",
-        "@com_github_aws_aws_sdk_go//service/kms",
-        "@com_github_aws_aws_sdk_go//service/kms/kmsiface",
+        "@com_github_tink_crypto_tink_go_v2//keyset",
+        "@com_github_tink_crypto_tink_go_v2//tink",
     ],
 )
 
@@ -22,12 +21,13 @@ go_test(
     srcs = ["fakeawskms_test.go"],
     embed = [":fakeawskms"],
     deps = [
-        "@com_github_aws_aws_sdk_go//aws",
-        "@com_github_aws_aws_sdk_go//service/kms",
+        "@com_github_aws_aws_sdk_go_v2//aws",
+        "@com_github_aws_aws_sdk_go_v2_service_kms//:kms",
     ],
 )
 
 alias(
     name = "go_default_library",
     actual = ":fakeawskms",
+    visibility = ["//integration/awskms:__subpackages__"],
 )

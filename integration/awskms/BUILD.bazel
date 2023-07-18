@@ -13,11 +13,10 @@ go_library(
     importpath = "github.com/tink-crypto/tink-go-awskms/v2/integration/awskms",
     visibility = ["//visibility:public"],
     deps = [
-        "@com_github_aws_aws_sdk_go//aws",
-        "@com_github_aws_aws_sdk_go//aws/credentials",
-        "@com_github_aws_aws_sdk_go//aws/session",
-        "@com_github_aws_aws_sdk_go//service/kms",
-        "@com_github_aws_aws_sdk_go//service/kms/kmsiface",
+        "@com_github_aws_aws_sdk_go_v2//aws",
+        "@com_github_aws_aws_sdk_go_v2_config//:config",
+        "@com_github_aws_aws_sdk_go_v2_credentials//:credentials",
+        "@com_github_aws_aws_sdk_go_v2_service_kms//:kms",
         "@com_github_tink_crypto_tink_go_v2//core/registry",
         "@com_github_tink_crypto_tink_go_v2//tink",
     ],
@@ -26,8 +25,8 @@ go_library(
 go_test(
     name = "awskms_test",
     srcs = [
-        "aws_kms_integration_test.go",
         "aws_kms_client_test.go",
+        "aws_kms_integration_test.go",
     ],
     data = [
         "//testdata/aws:credentials",
@@ -40,12 +39,13 @@ go_test(
     ],
     deps = [
         "//integration/awskms/internal/fakeawskms",
-        "@com_github_aws_aws_sdk_go//aws",
-        "@com_github_aws_aws_sdk_go//service/kms",
+        "@com_github_aws_aws_sdk_go_v2//aws",
+        "@com_github_aws_aws_sdk_go_v2_service_kms//:kms",
         "@com_github_tink_crypto_tink_go_v2//aead",
         "@com_github_tink_crypto_tink_go_v2//core/registry",
         "@com_github_tink_crypto_tink_go_v2//keyset",
         "@com_github_tink_crypto_tink_go_v2//subtle/random",
+        "@com_github_tink_crypto_tink_go_v2//tink",
     ],
 )
 

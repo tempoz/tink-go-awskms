@@ -18,16 +18,17 @@ package awskms
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/tink-crypto/tink-go-awskms/v2/integration/awskms/internal/fakeawskms"
 	"github.com/tink-crypto/tink-go/v2/core/registry"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/kms"
 )
 
 func TestNewClientWithOptions_URIPrefix(t *testing.T) {
@@ -73,7 +74,7 @@ func TestNewClientWithOptions_URIPrefix(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := NewClientWithOptions(test.uriPrefix)
+			_, err := NewClientWithOptions(context.Background(), test.uriPrefix)
 			if test.valid && err != nil {
 				t.Errorf("NewClientWithOptions(%q) err = %v, want nil", test.uriPrefix, err)
 			}
@@ -82,7 +83,7 @@ func TestNewClientWithOptions_URIPrefix(t *testing.T) {
 			}
 
 			// Test deprecated factory functions.
-			_, err = NewClient(test.uriPrefix)
+			_, err = NewClient(context.Background(), test.uriPrefix)
 			if test.valid && err != nil {
 				t.Errorf("NewClient(%q) err = %v, want nil", test.uriPrefix, err)
 			}
@@ -90,7 +91,7 @@ func TestNewClientWithOptions_URIPrefix(t *testing.T) {
 				t.Errorf("NewClient(%q) err = nil, want error", test.uriPrefix)
 			}
 
-			_, err = NewClientWithCredentials(test.uriPrefix, credFile)
+			_, err = NewClientWithCredentials(context.Background(), test.uriPrefix, credFile)
 			if test.valid && err != nil {
 				t.Errorf("NewClientWithCredentialPath(%q, _) err = %v, want nil", test.uriPrefix, err)
 			}
@@ -98,7 +99,7 @@ func TestNewClientWithOptions_URIPrefix(t *testing.T) {
 				t.Errorf("NewClientWithCredentialPath(%q, _) err = nil, want error", test.uriPrefix)
 			}
 
-			_, err = NewClientWithKMS(test.uriPrefix, fakekms)
+			_, err = NewClientWithKMS(context.Background(), test.uriPrefix, fakekms)
 			if test.valid && err != nil {
 				t.Errorf("NewClientWithKMS(%q, _) err = %v, want nil", test.uriPrefix, err)
 			}
@@ -141,7 +142,7 @@ func TestNewClientWithOptions_WithCredentialPath(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := NewClientWithOptions(uriPrefix, WithCredentialPath(test.credFile))
+			_, err := NewClientWithOptions(context.Background(), uriPrefix, WithCredentialPath(context.Background(), test.credFile))
 			if test.valid && err != nil {
 				t.Errorf("NewClientWithOptions(uriPrefix, WithCredentialPath(%q)) err = %v, want nil", test.credFile, err)
 			}
@@ -150,7 +151,7 @@ func TestNewClientWithOptions_WithCredentialPath(t *testing.T) {
 			}
 
 			// Test deprecated factory function.
-			_, err = NewClientWithCredentials(uriPrefix, test.credFile)
+			_, err = NewClientWithCredentials(context.Background(), uriPrefix, test.credFile)
 			if test.valid && err != nil {
 				t.Errorf("NewClientWithCredentials(uriPrefix, %q) err = %v, want nil", test.credFile, err)
 			}
@@ -169,14 +170,14 @@ func TestNewClientWithOptions_RepeatedWithKMSFails(t *testing.T) {
 		t.Fatalf("fakekms.New() failed: %v", err)
 	}
 
-	_, err = NewClientWithOptions("aws-kms://", WithKMS(fakekms), WithKMS(fakekms))
+	_, err = NewClientWithOptions(context.Background(), "aws-kms://", WithKMS(fakekms), WithKMS(fakekms))
 	if err == nil {
 		t.Fatalf("NewClientWithOptions(_, WithKMS(_), WithKMS(_)) err = nil, want error")
 	}
 }
 
 func TestNewClientWithOptions_RepeatedWithEncryptionContextNameFails(t *testing.T) {
-	_, err := NewClientWithOptions("aws-kms://", WithEncryptionContextName(LegacyAdditionalData), WithEncryptionContextName(AssociatedData))
+	_, err := NewClientWithOptions(context.Background(), "aws-kms://", WithEncryptionContextName(LegacyAdditionalData), WithEncryptionContextName(AssociatedData))
 	if err == nil {
 		t.Fatalf("NewClientWithOptions(_, WithEncryptionContextName(_), WithEncryptionContextName(_)) err = nil, want error")
 	}
@@ -187,7 +188,7 @@ func TestSupported(t *testing.T) {
 	supportedKeyURI := "aws-kms://arn:aws-us-gov:kms:us-gov-east-1:235739564943:key/3ee50705-5a82-4f5b-9753-05c4f473922f"
 	nonSupportedKeyURI := "aws-kms://arn:aws-us-gov:kms:us-gov-east-DOES-NOT-EXIST:key/"
 
-	client, err := NewClientWithOptions(uriPrefix)
+	client, err := NewClientWithOptions(context.Background(), uriPrefix)
 	if err != nil {
 		t.Fatalf("NewClientWithOptions() failed: %v", err)
 	}
@@ -205,7 +206,7 @@ func TestGetAEADSupportedURI(t *testing.T) {
 	uriPrefix := "aws-kms://arn:aws-us-gov:kms:us-gov-east-1:235739564943:key/"
 	supportedKeyURI := "aws-kms://arn:aws-us-gov:kms:us-gov-east-1:235739564943:key/3ee50705-5a82-4f5b-9753-05c4f473922f"
 
-	client, err := NewClientWithOptions(uriPrefix)
+	client, err := NewClientWithOptions(context.Background(), uriPrefix)
 	if err != nil {
 		t.Fatalf("NewClientWithOptions() failed: %v", err)
 	}
@@ -224,7 +225,7 @@ func TestGetAEADEncryptDecrypt(t *testing.T) {
 		t.Fatalf("fakekms.New() failed: %v", err)
 	}
 
-	client, err := NewClientWithOptions("aws-kms://", WithKMS(fakekms))
+	client, err := NewClientWithOptions(context.Background(), "aws-kms://", WithKMS(fakekms))
 	if err != nil {
 		t.Fatalf("NewClientWithOptions() failed: %v", err)
 	}
@@ -267,7 +268,7 @@ func TestUsesAdditionalDataAsContextName(t *testing.T) {
 		t.Fatalf("fakeawskms.New() failed: %v", err)
 	}
 
-	client, err := NewClientWithKMS("aws-kms://", fakekms)
+	client, err := NewClientWithKMS(context.Background(), "aws-kms://", fakekms)
 	if err != nil {
 		t.Fatalf("NewClientWithKMS() failed: %v", err)
 	}
@@ -285,13 +286,13 @@ func TestUsesAdditionalDataAsContextName(t *testing.T) {
 	}
 
 	hexAD := hex.EncodeToString(associatedData)
-	context := map[string]*string{"additionalData": &hexAD}
+	encContext := map[string]string{"additionalData": hexAD}
 	decRequest := &kms.DecryptInput{
 		KeyId:             aws.String(keyARN),
 		CiphertextBlob:    ciphertext,
-		EncryptionContext: context,
+		EncryptionContext: encContext,
 	}
-	decResponse, err := fakekms.Decrypt(decRequest)
+	decResponse, err := fakekms.Decrypt(context.Background(), decRequest)
 	if err != nil {
 		t.Fatalf("fakeKMS.Decrypt(decRequest) err = %s, want nil", err)
 	}
@@ -327,7 +328,7 @@ func TestEncryptionContextName(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.wantContextName, func(t *testing.T) {
-			client, err := NewClientWithOptions("aws-kms://", WithKMS(fakekms), WithEncryptionContextName(test.contextName))
+			client, err := NewClientWithOptions(context.Background(), "aws-kms://", WithKMS(fakekms), WithEncryptionContextName(test.contextName))
 			if err != nil {
 				t.Fatalf("NewClientWithOptions() failed: %v", err)
 			}
@@ -345,13 +346,13 @@ func TestEncryptionContextName(t *testing.T) {
 			}
 
 			hexAD := hex.EncodeToString(associatedData)
-			context := map[string]*string{test.wantContextName: &hexAD}
+			encContext := map[string]string{test.wantContextName: hexAD}
 			decRequest := &kms.DecryptInput{
 				KeyId:             aws.String(keyARN),
 				CiphertextBlob:    ciphertext,
-				EncryptionContext: context,
+				EncryptionContext: encContext,
 			}
-			decResponse, err := fakekms.Decrypt(decRequest)
+			decResponse, err := fakekms.Decrypt(context.Background(), decRequest)
 			if err != nil {
 				t.Fatalf("fakeKMS.Decrypt(decRequest) err = %s, want nil", err)
 			}
@@ -382,7 +383,7 @@ func TestEncryptionContextName_defaultEncryptionContextName(t *testing.T) {
 			name: "NewClientWithOptions",
 			client: func(t *testing.T) registry.KMSClient{
 				t.Helper()
-				c, err := NewClientWithOptions(keyURI, WithKMS(fakekms))
+				c, err := NewClientWithOptions(context.Background(), keyURI, WithKMS(fakekms))
 				if err != nil {
 					t.Fatalf("NewClientWithOptions() failed: %v", err)
 				}
@@ -396,7 +397,7 @@ func TestEncryptionContextName_defaultEncryptionContextName(t *testing.T) {
 			name: "NewClientWithKMS",
 			client: func(t *testing.T) registry.KMSClient{
 				t.Helper()
-				c, err := NewClientWithKMS(keyURI, fakekms)
+				c, err := NewClientWithKMS(context.Background(), keyURI, fakekms)
 				if err != nil {
 					t.Fatalf("NewClientWithKMS() failed: %v", err)
 				}
@@ -422,13 +423,13 @@ func TestEncryptionContextName_defaultEncryptionContextName(t *testing.T) {
 			}
 
 			hexAD := hex.EncodeToString(associatedData)
-			context := map[string]*string{test.wantContextName: &hexAD}
+			encContext := map[string]string{test.wantContextName: hexAD}
 			decRequest := &kms.DecryptInput{
 				KeyId:             aws.String(keyARN),
 				CiphertextBlob:    ciphertext,
-				EncryptionContext: context,
+				EncryptionContext: encContext,
 			}
-			decResponse, err := fakekms.Decrypt(decRequest)
+			decResponse, err := fakekms.Decrypt(context.Background(), decRequest)
 			if err != nil {
 				t.Fatalf("fakeKMS.Decrypt(decRequest) err = %s, want nil", err)
 			}

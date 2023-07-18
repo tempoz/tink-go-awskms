@@ -18,19 +18,19 @@
 package awskms
 
 import (
+	"context"
 	"encoding/hex"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/kms"
-	"github.com/aws/aws-sdk-go/service/kms/kmsiface"
+	"github.com/aws/aws-sdk-go-v2/service/kms"
 )
 
 // AWSAEAD is an implementation of the AEAD interface which performs
 // cryptographic operations remotely via the AWS KMS service using a specific
 // key URI.
 type AWSAEAD struct {
+	ctx                   context.Context
 	keyURI                string
-	kms                   kmsiface.KMSAPI
+	kms                   Cryptable
 	encryptionContextName EncryptionContextName
 }
 
@@ -41,8 +41,9 @@ type AWSAEAD struct {
 //	aws-kms://arn:<partition>:kms:<region>:[<path>]
 //
 // See http://docs.aws.amazon.com/general/latest/gr/aws-arns-and-namespaces.html.
-func newAWSAEAD(keyURI string, kms kmsiface.KMSAPI, name EncryptionContextName) *AWSAEAD {
+func newAWSAEAD(ctx context.Context, keyURI string, kms Cryptable, name EncryptionContextName) *AWSAEAD {
 	return &AWSAEAD{
+		ctx:                   ctx,
 		keyURI:                keyURI,
 		kms:                   kms,
 		encryptionContextName: name,
@@ -52,14 +53,14 @@ func newAWSAEAD(keyURI string, kms kmsiface.KMSAPI, name EncryptionContextName) 
 // Encrypt encrypts the plaintext with associatedData.
 func (a *AWSAEAD) Encrypt(plaintext, associatedData []byte) ([]byte, error) {
 	req := &kms.EncryptInput{
-		KeyId:     aws.String(a.keyURI),
+		KeyId:     &a.keyURI,
 		Plaintext: plaintext,
 	}
 	if len(associatedData) > 0 {
 		ad := hex.EncodeToString(associatedData)
-		req.EncryptionContext = map[string]*string{a.encryptionContextName.String(): &ad}
+		req.EncryptionContext = map[string]string{a.encryptionContextName.String(): ad}
 	}
-	resp, err := a.kms.Encrypt(req)
+	resp, err := a.kms.Encrypt(a.ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -69,14 +70,14 @@ func (a *AWSAEAD) Encrypt(plaintext, associatedData []byte) ([]byte, error) {
 // Decrypt decrypts the ciphertext and verifies the associated data.
 func (a *AWSAEAD) Decrypt(ciphertext, associatedData []byte) ([]byte, error) {
 	req := &kms.DecryptInput{
-		KeyId:          aws.String(a.keyURI),
+		KeyId:          &a.keyURI,
 		CiphertextBlob: ciphertext,
 	}
 	if len(associatedData) > 0 {
 		ad := hex.EncodeToString(associatedData)
-		req.EncryptionContext = map[string]*string{a.encryptionContextName.String(): &ad}
+		req.EncryptionContext = map[string]string{a.encryptionContextName.String(): ad}
 	}
-	resp, err := a.kms.Decrypt(req)
+	resp, err := a.kms.Decrypt(a.ctx, req)
 	if err != nil {
 		return nil, err
 	}

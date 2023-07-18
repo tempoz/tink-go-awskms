@@ -17,6 +17,7 @@
 package awskms
 
 import (
+	"context"
 	"encoding/csv"
 	"errors"
 	"fmt"
@@ -25,11 +26,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/kms"
-	"github.com/aws/aws-sdk-go/service/kms/kmsiface"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/tink-crypto/tink-go/v2/core/registry"
 	"github.com/tink-crypto/tink-go/v2/tink"
 )
@@ -44,11 +44,17 @@ var (
 	errCredCSV = errors.New("malformed credential CSV file")
 )
 
+type Cryptable interface {
+	Encrypt(ctx context.Context, params *kms.EncryptInput, optFns ...func(*kms.Options)) (*kms.EncryptOutput, error)
+	Decrypt(ctx context.Context, params *kms.DecryptInput, optFns ...func(*kms.Options)) (*kms.DecryptOutput, error)
+}
+
 // awsClient is a wrapper around an AWS SDK provided KMS client that can
 // instantiate Tink primitives.
 type awsClient struct {
+	ctx                   context.Context
 	keyURIPrefix          string
-	kms                   kmsiface.KMSAPI
+	kms                   Cryptable
 	encryptionContextName EncryptionContextName
 }
 
@@ -68,13 +74,13 @@ func (o option) set(a *awsClient) error { return o(a) }
 //
 // See https://docs.aws.amazon.com/cli/latest/userguide/cli-authentication-user.html#cli-authentication-user-configure-csv
 // and https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html#cli-configure-files-format.
-func WithCredentialPath(credentialPath string) ClientOption {
+func WithCredentialPath(ctx context.Context, credentialPath string) ClientOption {
 	return option(func(a *awsClient) error {
 		if a.kms != nil {
 			return errors.New("WithCredentialPath option cannot be used, KMS client already set")
 		}
 
-		k, err := getKMSFromCredentialPath(a.keyURIPrefix, credentialPath)
+		k, err := getKMSFromCredentialPath(ctx, a.keyURIPrefix, credentialPath)
 		if err != nil {
 			return err
 		}
@@ -90,7 +96,7 @@ func WithCredentialPath(credentialPath string) ClientOption {
 // It's the callers responsibility to ensure that the configured region of kms
 // aligns with the region in key URIs passed to this client. Otherwise, API
 // requests will fail.
-func WithKMS(kms kmsiface.KMSAPI) ClientOption {
+func WithKMS(kms Cryptable) ClientOption {
 	return option(func(a *awsClient) error {
 		if a.kms != nil {
 			return errors.New("WithKMS option cannot be used, KMS client already set")
@@ -158,12 +164,13 @@ func WithEncryptionContextName(name EncryptionContextName) ClientOption {
 //
 // AEAD primitives produced by this client will use [AssociatedData] when
 // serializing associated data.
-func NewClientWithOptions(uriPrefix string, opts ...ClientOption) (registry.KMSClient, error) {
+func NewClientWithOptions(ctx context.Context, uriPrefix string, opts ...ClientOption) (registry.KMSClient, error) {
 	if !strings.HasPrefix(strings.ToLower(uriPrefix), awsPrefix) {
 		return nil, fmt.Errorf("uriPrefix must start with %q, but got %q", awsPrefix, uriPrefix)
 	}
 
 	a := &awsClient{
+		ctx:          ctx,
 		keyURIPrefix: uriPrefix,
 	}
 
@@ -176,7 +183,7 @@ func NewClientWithOptions(uriPrefix string, opts ...ClientOption) (registry.KMSC
 
 	// Populate values not defined via options.
 	if a.kms == nil {
-		k, err := getKMS(uriPrefix)
+		k, err := getKMS(ctx, uriPrefix)
 		if err != nil {
 			return nil, err
 		}
@@ -204,8 +211,8 @@ func NewClientWithOptions(uriPrefix string, opts ...ClientOption) (registry.KMSC
 // Deprecated: Instead, use [NewClientWithOptions].
 //
 //	awskms.NewClientWithOptions(uriPrefix)
-func NewClient(uriPrefix string) (registry.KMSClient, error) {
-	return NewClientWithOptions(uriPrefix, WithEncryptionContextName(LegacyAdditionalData))
+func NewClient(ctx context.Context, uriPrefix string) (registry.KMSClient, error) {
+	return NewClientWithOptions(ctx, uriPrefix, WithEncryptionContextName(LegacyAdditionalData))
 }
 
 // NewClientWithCredentials returns a KMSClient backed by AWS KMS using the given
@@ -229,8 +236,8 @@ func NewClient(uriPrefix string) (registry.KMSClient, error) {
 // Deprecated: Instead use [NewClientWithOptions] and [WithCredentialPath].
 //
 //	awskms.NewClientWithOptions(uriPrefix, awskms.WithCredentialPath(credentialPath))
-func NewClientWithCredentials(uriPrefix string, credentialPath string) (registry.KMSClient, error) {
-	return NewClientWithOptions(uriPrefix, WithCredentialPath(credentialPath), WithEncryptionContextName(LegacyAdditionalData))
+func NewClientWithCredentials(ctx context.Context, uriPrefix string, credentialPath string) (registry.KMSClient, error) {
+	return NewClientWithOptions(ctx, uriPrefix, WithCredentialPath(ctx, credentialPath), WithEncryptionContextName(LegacyAdditionalData))
 }
 
 // NewClientWithKMS returns a KMSClient backed by AWS KMS using the provided
@@ -251,8 +258,8 @@ func NewClientWithCredentials(uriPrefix string, credentialPath string) (registry
 // Deprecated: Instead use [NewClientWithOptions] and [WithKMS].
 //
 //	awskms.NewClientWithOptions(uriPrefix, awskms.WithKMS(kms))
-func NewClientWithKMS(uriPrefix string, kms kmsiface.KMSAPI) (registry.KMSClient, error) {
-	return NewClientWithOptions(uriPrefix, WithKMS(kms), WithEncryptionContextName(LegacyAdditionalData))
+func NewClientWithKMS(ctx context.Context, uriPrefix string, kms Cryptable) (registry.KMSClient, error) {
+	return NewClientWithOptions(ctx, uriPrefix, WithKMS(kms), WithEncryptionContextName(LegacyAdditionalData))
 }
 
 // Supported returns true if keyURI starts with the URI prefix provided when
@@ -275,55 +282,62 @@ func (c *awsClient) GetAEAD(keyURI string) (tink.AEAD, error) {
 	}
 
 	uri := strings.TrimPrefix(keyURI, awsPrefix)
-	return newAWSAEAD(uri, c.kms, c.encryptionContextName), nil
+	return newAWSAEAD(c.ctx, uri, c.kms, c.encryptionContextName), nil
 }
 
-func getKMS(uriPrefix string) (*kms.KMS, error) {
+func getKMS(ctx context.Context, uriPrefix string) (Cryptable, error) {
 	r, err := getRegion(uriPrefix)
 	if err != nil {
 		return nil, err
 	}
 
-	session, err := session.NewSession(&aws.Config{
-		Region: aws.String(r),
-	})
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(r))
 	if err != nil {
 		return nil, err
 	}
 
-	return kms.New(session), nil
+	return kms.NewFromConfig(cfg), nil
 }
 
-func getKMSFromCredentialPath(uriPrefix string, credentialPath string) (*kms.KMS, error) {
+func getKMSFromCredentialPath(ctx context.Context, uriPrefix string, credentialPath string) (Cryptable, error) {
 	r, err := getRegion(uriPrefix)
 	if err != nil {
 		return nil, err
 	}
+	configOptions := []func(*config.LoadOptions) error{
+		config.WithRegion(r),
+	}
 
-	var creds *credentials.Credentials
 	if len(credentialPath) == 0 {
 		return nil, errCred
 	}
 	c, err := extractCredsCSV(credentialPath)
 	switch err {
 	case nil:
-		creds = credentials.NewStaticCredentialsFromCreds(*c)
+		configOptions = append(configOptions, config.WithCredentialsProvider(
+			credentials.StaticCredentialsProvider{Value: *c},
+		))
 	case errBadFile, errCredCSV:
 		return nil, err
 	default:
 		// Fallback to load the credential path as .ini shared credentials.
-		creds = credentials.NewSharedCredentials(credentialPath, "default")
+		configOptions = append(configOptions, config.WithSharedConfigFiles(
+			[]string{credentialPath},
+		))
+		configOptions = append(configOptions, config.WithSharedConfigProfile(
+			"default",
+		))
 	}
 
-	session, err := session.NewSession(&aws.Config{
-		Credentials: creds,
-		Region:      aws.String(r),
-	})
+	cfg, err := config.LoadDefaultConfig(
+		ctx,
+		configOptions...
+	)
 	if err != nil {
 		return nil, err
 	}
 
-	return kms.New(session), nil
+	return kms.NewFromConfig(cfg), nil
 }
 
 // extractCredsCSV extracts credentials from a CSV file.
@@ -336,7 +350,7 @@ func getKMSFromCredentialPath(uriPrefix string, credentialPath string) (*kms.KMS
 //  1. The first line consists of the headers:
 //     "User name,Password,Access key ID,Secret access key,Console login link"
 //  2. The second line contains 5 comma separated values.
-func extractCredsCSV(file string) (*credentials.Value, error) {
+func extractCredsCSV(file string) (*aws.Credentials, error) {
 	f, err := os.Open(file)
 	if err != nil {
 		return nil, errBadFile
@@ -362,7 +376,7 @@ func extractCredsCSV(file string) (*credentials.Value, error) {
 		return nil, errCredCSV
 	}
 
-	return &credentials.Value{
+	return &aws.Credentials{
 		AccessKeyID:     lines[1][2],
 		SecretAccessKey: lines[1][3],
 	}, nil
